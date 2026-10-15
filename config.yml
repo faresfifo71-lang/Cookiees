@@ -1,43 +1,51 @@
 txt_fields:
-  name: false
-  email: true
-  plan: true
-  country: true
-  member_since: false
-  quality: true
-  max_streams: true
-  plan_price: true
-  next_billing: true
-  payment_method: true
-  card: false
-  phone: false
-  hold_status: false
-  extra_members: true
-  email_verified: false
-  membership_status: false
-  profiles: true
-  user_guid: false
+  name: true # account holder name
+  email: true # account email
+  plan: true # plan name
+  country: true # country code
+  member_since: true # account membership date
+  quality: true # playback quality
+  max_streams: true # max concurrent screens
+  plan_price: true # plan price
+  next_billing: true # next billing date
+  payment_method: true # payment method type
+  card: true # masked card / bank suffix
+  phone: true # phone number
+  hold_status: true # account hold status
+  extra_members: true # whether extra members are enabled
+  email_verified: true # email verification status
+  membership_status: true # membership state
+  profiles: true # profile names
+  user_guid: false # user GUID extracted from account data
 
-nftoken: true
-add_emojis: "webhook"
+nftoken: true # false = disabled; true or "all" = PC, mobile, and TV links
+# Select one: "pc", "mobile", "tv"; combine with "/": "pc/tv", "pc/mobile", "mobile/tv".
+# Values are case-insensitive; legacy "both" = "pc/mobile".
+add_emojis: "webhook" # allowed: false, "txt", "webhook", "both"; "webhook" = Discord/Telegram notification messages only (not TXT files); true => "both"
 
 notifications:
+  webhook:
+    enabled: false # true to send output to Discord webhook
+    url: "" # put full webhook URL here
+    mode: "full" # allowed: "full", "cookie", "nftoken"
+    plans: ["premium", "standard_with_ads", "standard", "basic", "mobile"] # use "all" or multiple like ["premium", "standard_with_ads", "standard", "basic", "mobile", "free"]
+
   telegram:
-    enabled: true
-    bot_token: "YOUR_TELEGRAM_BOT_TOKEN_HERE"
-    chat_id: "YOUR_CHAT_ID_HERE"
-    mode: "full"
-    plans: "all"
+    enabled: false # true to send output to Telegram
+    bot_token: "" # token from @BotFather
+    chat_id: "" # your chat/channel id (example: "-1001234567890")
+    mode: "full" # allowed: "full", "cookie", "nftoken"
+    plans: "all" # use "all" or multiple like ["premium", "standard_with_ads", "standard", "basic", "mobile", "free"]
 
 display:
-  mode: "simple"
+  mode: "simple" # allowed: "log" or "simple"
 
 retries:
-  error_proxy_attempts: 3
-  nftoken_attempts: 1
+  error_proxy_attempts: 4 # retry attempts on network/proxy errors (rotates proxy each try)
+  nftoken_attempts: 5 # retry attempts for NFToken creation
 
 performance:
-  request_timeout_seconds: 15
-  fallback_account_page: false
-  retry_incomplete_info: false
-  nftoken_for_free: false
+  request_timeout_seconds: 15 # lower timeout = faster failure on bad proxies
+  fallback_account_page: false # true = fetch /YourAccount as fallback (slower)
+  retry_incomplete_info: false # true = retry when account page is partial (slower)
+  nftoken_for_free: false # true = also generate NFToken for free accounts (slower)
