@@ -819,7 +819,7 @@ def is_netflix_domain(domain):
 
 
 
-      def canonicalize_netflix_cookie_name(name):
+def canonicalize_netflix_cookie_name(name):
     normalized = str(name or "").strip()
     return CANONICAL_NETFLIX_COOKIE_NAMES.get(normalized.lower(), normalized)
 
