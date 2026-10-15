@@ -1,2 +1,7 @@
+pyTelegramBotAPI
+pyzipper
+requests
+urllib3
+playwright
 requests>=2.31.0,<3.0.0
 PyYAML>=6.0.1,<7.0.0
