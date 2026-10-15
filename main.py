@@ -1291,13 +1291,13 @@ def extract_info_from_graphql_payload(response_text):
     else:
         phone_digits = raw_phone
 
-    def _growth_email(profile_obj):
-        if not isinstance(profile_obj, dict):
-            return None, None  growth_email = profile_obj.get("growthEmail") or {}
-        email_obj = growth_email.get("email") or {}
-        email_value = email_obj.get("value") if isinstance(email_obj, dict) else None
-        return email_value, growth_email.get("isVerified")
-
+   def _growth_email(profile_obj):
+    if not isinstance(profile_obj, dict):
+        return None, None
+    growth_email = profile_obj.get("growthEmail") or {}
+    email_obj = growth_email.get("email") or {}
+    email_value = email_obj.get("value") if isinstance(email_obj, dict) else None
+    return email_value, growth_email.get("isVerified")
     email_value, email_verified = _growth_email(current_profile)
     if not email_value:
         for profile in profiles:
