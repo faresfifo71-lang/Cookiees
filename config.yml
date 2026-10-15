@@ -1,0 +1,43 @@
+txt_fields:
+  name: false
+  email: true
+  plan: true
+  country: true
+  member_since: false
+  quality: true
+  max_streams: true
+  plan_price: true
+  next_billing: true
+  payment_method: true
+  card: false
+  phone: false
+  hold_status: false
+  extra_members: true
+  email_verified: false
+  membership_status: false
+  profiles: true
+  user_guid: false
+
+nftoken: true
+add_emojis: "webhook"
+
+notifications:
+  telegram:
+    enabled: true
+    bot_token: "YOUR_TELEGRAM_BOT_TOKEN_HERE"
+    chat_id: "YOUR_CHAT_ID_HERE"
+    mode: "full"
+    plans: "all"
+
+display:
+  mode: "simple"
+
+retries:
+  error_proxy_attempts: 3
+  nftoken_attempts: 1
+
+performance:
+  request_timeout_seconds: 15
+  fallback_account_page: false
+  retry_incomplete_info: false
+  nftoken_for_free: false
